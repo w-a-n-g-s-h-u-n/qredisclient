@@ -1,13 +1,15 @@
 #include "connectionconfig.h"
 #include "qredisclient/utils/compat.h"
 #include <QFile>
+#include <QJsonDocument>
+#include <QCryptographicHash>
 
 RedisClient::ConnectionConfig::ConnectionConfig(const QString &host, const QString &auth, const uint port, const QString &name)
 {
     m_parameters.insert("name", name);
     m_parameters.insert("auth", auth);
     m_parameters.insert("host", host);
-    m_parameters.insert("port", port);    
+    m_parameters.insert("port", port);
     m_parameters.insert("timeout_connect", DEFAULT_TIMEOUT_IN_MS);
     m_parameters.insert("timeout_execute", DEFAULT_TIMEOUT_IN_MS);
 }
@@ -16,7 +18,6 @@ RedisClient::ConnectionConfig &RedisClient::ConnectionConfig::operator =(const C
 {
     if (this != &other) {
         m_parameters = other.m_parameters;
-        m_owner = other.m_owner;
     }
 
     return *this;
@@ -25,6 +26,23 @@ RedisClient::ConnectionConfig &RedisClient::ConnectionConfig::operator =(const C
 RedisClient::ConnectionConfig::ConnectionConfig(const QVariantHash &options)
     : m_parameters(options)
 {
+}
+
+QByteArray RedisClient::ConnectionConfig::id() const
+{        
+    QByteArray storedId = param<QByteArray>("id");
+
+    if (!storedId.isEmpty())
+        return storedId;
+
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    hash.addData(QJsonDocument(toJsonObject()).toJson(QJsonDocument::Compact));
+    return hash.result();
+}
+
+void RedisClient::ConnectionConfig::setId(QByteArray id)
+{
+    setParam<QByteArray>("id", id);
 }
 
 QString RedisClient::ConnectionConfig::name() const
@@ -42,6 +60,11 @@ QString RedisClient::ConnectionConfig::auth() const
     return param<QString>("auth");
 }
 
+QString RedisClient::ConnectionConfig::username() const
+{
+    return param<QString>("username");
+}
+
 uint RedisClient::ConnectionConfig::port() const
 {
     return param<uint>("port");
@@ -55,6 +78,11 @@ void RedisClient::ConnectionConfig::setName(QString name)
 void RedisClient::ConnectionConfig::setAuth(QString auth)
 {
     setParam<QString>("auth", auth);
+}
+
+void RedisClient::ConnectionConfig::setUsername(QString username)
+{
+    setParam<QString>("username", username);
 }
 
 void RedisClient::ConnectionConfig::setHost(QString host)
@@ -109,12 +137,17 @@ QString RedisClient::ConnectionConfig::sslCaCertPath() const
 
 QString RedisClient::ConnectionConfig::sslPrivateKeyPath() const
 {
-    return getValidPathFromParameter("ssl_private_key_path");
+    return param<QString>("ssl_private_key_path");
 }
 
 QString RedisClient::ConnectionConfig::sslLocalCertPath() const
 {
-    return getValidPathFromParameter("ssl_local_cert_path");
+    return param<QString>("ssl_local_cert_path");
+}
+
+bool RedisClient::ConnectionConfig::ignoreAllSslErrors() const
+{
+    return param<bool>("ssl_ignore_all_errors", false);
 }
 
 void RedisClient::ConnectionConfig::setSslCaCertPath(QString path)
@@ -132,12 +165,9 @@ void RedisClient::ConnectionConfig::setSslLocalCertPath(QString path)
     setParam<QString>("ssl_local_cert_path", path);
 }
 
-void RedisClient::ConnectionConfig::setSslSettigns(QString sslCaCertPath, QString sslPrivateKeyPath, QString sslLocalCertPath)
+void RedisClient::ConnectionConfig::setIgnoreAllSslErrors(bool v)
 {
-    setParam<bool>("ssl", true);
-    setParam<QString>("ssl_ca_cert_path", sslCaCertPath);
-    setParam<QString>("ssl_private_key_path", sslPrivateKeyPath);
-    setParam<QString>("ssl_local_cert_path", sslLocalCertPath);
+    m_parameters.insert("ssl_ignore_all_errors", v);
 }
 
 bool RedisClient::ConnectionConfig::isSshPasswordUsed() const
@@ -170,19 +200,6 @@ QVariantHash RedisClient::ConnectionConfig::getInternalParameters() const
     return m_parameters;
 }
 
-void RedisClient::ConnectionConfig::setSshTunnelSettings(QString host,
-                                                         QString user, QString pass,
-                                                         uint port,
-                                                         QString sshPrivatekeyPath, QString sshPublickeyPath)
-{
-    m_parameters.insert("ssh_host", host);
-    m_parameters.insert("ssh_user", user);
-    m_parameters.insert("ssh_password", pass);
-    m_parameters.insert("ssh_port", port);
-    m_parameters.insert("ssh_private_key_path", sshPrivatekeyPath);
-    m_parameters.insert("ssh_public_key_path", sshPublickeyPath);
-}
-
 bool RedisClient::ConnectionConfig::overrideClusterHost() const
 {
     return param<bool>("cluster_host_override", true);
@@ -213,6 +230,11 @@ bool RedisClient::ConnectionConfig::useAuth() const
     return !param<QString>("auth").isEmpty();
 }
 
+bool RedisClient::ConnectionConfig::useAcl() const
+{
+    return !param<QString>("username").isEmpty();
+}
+
 bool RedisClient::ConnectionConfig::useSsl() const
 {
     return param<bool>("ssl");
@@ -230,29 +252,9 @@ bool RedisClient::ConnectionConfig::isValid() const
             && param<uint>("timeout_execute") > 1000;
 }
 
-void RedisClient::ConnectionConfig::setOwner(QWeakPointer<RedisClient::Connection> owner)
-{
-    m_owner = owner;
-}
-
-QWeakPointer<RedisClient::Connection> RedisClient::ConnectionConfig::getOwner() const
-{
-    return m_owner;
-}
-
-QString RedisClient::ConnectionConfig::getSshPrivateKey() const
-{
-    return getValidPathFromParameter("ssh_private_key_path");
-}
-
 QString RedisClient::ConnectionConfig::getSshPrivateKeyPath() const
 {
     return param<QString>("ssh_private_key_path");
-}
-
-QString RedisClient::ConnectionConfig::getSshPublicKey() const
-{
-    return getValidPathFromParameter("ssh_public_key_path");
 }
 
 QString RedisClient::ConnectionConfig::getSshPublicKeyPath() const
@@ -292,16 +294,9 @@ RedisClient::ConnectionConfig RedisClient::ConnectionConfig::fromJsonObject(cons
     return c;
 }
 
-QJsonObject RedisClient::ConnectionConfig::toJsonObject()
+QJsonObject RedisClient::ConnectionConfig::toJsonObject() const
 {
-    return QJsonObjectFromVariantHash(m_parameters);
-}
-
-QString RedisClient::ConnectionConfig::getValidPathFromParameter(const QString &name) const
-{
-    QString path = param<QString>(name);
-    if (path.isEmpty() || !QFile::exists(path))
-        return QString();
-
-    return path;
+    auto params = m_parameters;
+    params.remove("id");
+    return QJsonObjectFromVariantHash(params);
 }

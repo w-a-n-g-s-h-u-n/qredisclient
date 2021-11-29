@@ -1,17 +1,16 @@
 #pragma once
-#include <functional>
-#include <QObject>
 #include <QByteArray>
+#include <QObject>
 #include <QQueue>
-#include <QTimer>
 #include <QSharedPointer>
+#include <QTimer>
+#include <functional>
 
 #include "qredisclient/command.h"
-#include "qredisclient/response.h"
+#include "qredisclient/responseparser.h"
 
 namespace RedisClient {
 
-class Response;
 class ResponseEmitter;
 class Connection;
 
@@ -20,96 +19,80 @@ class Connection;
  * Provides basic abstraction for transporting commands to redis-server.
  * THIS IS IMPLEMENTATION CLASS AND SHOULDN'T BE USED DIRECTLY.
  */
-class AbstractTransporter : public QObject
-{
-    Q_OBJECT
-public:
-    AbstractTransporter(Connection * c); //TODO: replace raw pointer by WeakPtr
-    virtual ~AbstractTransporter();
+class AbstractTransporter : public QObject {
+  Q_OBJECT
+ public:
+  AbstractTransporter(Connection* c);  // TODO: replace raw pointer by WeakPtr
+  virtual ~AbstractTransporter();
 
-signals:
-    void errorOccurred(const QString&);
-    void logEvent(const QString&);
-    void connected();
-    void commandAdded();
-    void queueIsEmpty();    
+  virtual int pipelineCommandsLimit() const;
 
-public slots:
-    virtual void init();
-    virtual void disconnectFromHost() {}
-    virtual void addCommand(const Command &);
-    virtual void cancelCommands(QObject *);
-    virtual void readyRead();
+ signals:
+  void errorOccurred(const QString&);
+  void logEvent(const QString&);
+  void connected();
+  void commandAdded();
+  void queueIsEmpty();
 
-protected slots:
-    virtual void executionTimeout();
-    virtual void reconnect() = 0;
-    virtual void reconnectTo(const QString& host, int port);
-    virtual void processCommandQueue();
-    virtual void runProcessingLoop();
-    virtual void cancelRunningCommands();
+ public slots:
+  virtual void init();
+  virtual void disconnectFromHost();
+  virtual void addCommands(const QList<Command>&);
+  virtual void cancelCommands(QObject*);
+  virtual void readyRead();
 
-protected:
-    virtual bool isInitialized() const = 0;
-    virtual bool isSocketReconnectRequired() const = 0;
-    virtual bool canReadFromSocket() = 0;
-    virtual QByteArray readFromSocket() = 0;
-    virtual void initSocket() = 0;
-    virtual bool connectToHost() = 0;
-    virtual void runCommand(const Command &command);
-    virtual void sendCommand(const QByteArray& cmd) = 0;
-    virtual void sendResponse(const Response &response);
-    void resetDbIndex();
+ protected slots:
+  virtual void executionTimeout();
+  virtual void reconnect() = 0;
+  virtual void reconnectTo(const QString& host, int port);
+  virtual void processCommandQueue();
+  virtual void cancelRunningCommands();
 
-protected:
-    class RunningCommand {
-    public:
-        RunningCommand(const Command& cmd);
-        Command cmd;
-        QSharedPointer<ResponseEmitter> emitter;
-    };
+ protected:
+  virtual bool isInitialized() const = 0;
+  virtual bool isSocketReconnectRequired() const = 0;
+  virtual bool canReadFromSocket() = 0;
+  virtual QByteArray readFromSocket() = 0;
+  virtual void initSocket() = 0;
+  virtual bool connectToHost() = 0;
+  virtual void runCommand(const Command& command);
+  virtual void sendCommand(const QByteArray& cmd) = 0;
+  virtual void sendResponse(const Response& response);
+  void resetDbIndex();
+  Command pickNextCommandForCurrentNode();
+  void pickClusterNodeForNextCommand();
 
-    void reAddRunningCommandToQueue(QObject* ignoreOwner=nullptr);    
+  virtual bool validateSystemProxy();
 
-private:
-    void logResponse(const Response &response);
-    void processClusterRedirect(QSharedPointer<RunningCommand> runningCommand,
-                                const Response& r);
-    void addSubscriptionsFromRunningCommand(QSharedPointer<RunningCommand> runningCommand);
+ protected:
+  class RunningCommand {
+   public:
+    RunningCommand(const Command& cmd);
+    Command cmd;
+    QSharedPointer<ResponseEmitter> emitter;
+    qint64 sentAt;
+  };
 
-protected:
-    Connection * m_connection;
-    QQueue<QSharedPointer<RunningCommand>> m_runningCommands;
-    Response m_response;    
-    QQueue<Command> m_commands;
-    QSharedPointer<QTimer> m_loopTimer;
-    typedef QHash<QByteArray, QSharedPointer<ResponseEmitter>> Subscriptions;
-    Subscriptions m_subscriptions;
-    bool m_reconnectEnabled;
+  void reAddRunningCommandToQueue();
+
+ private:
+  void logResponse(const Response& response);
+  void processClusterRedirect(QSharedPointer<RunningCommand> runningCommand,
+                              const Response& r);
+  void addSubscriptionsFromRunningCommand(
+      QSharedPointer<RunningCommand> runningCommand);
+
+ protected:
+  Connection* m_connection;
+  QQueue<QSharedPointer<RunningCommand>> m_runningCommands;
+  QQueue<Command> m_commands;
+  QQueue<Command> m_internalCommands;
+  typedef QHash<QByteArray, QSharedPointer<ResponseEmitter>> Subscriptions;
+  Subscriptions m_subscriptions;
+  bool m_reconnectEnabled;
+  bool m_pendingClusterRedirect;
+  bool m_connectionInitialized;
+  ResponseParser m_parser;
+  uint m_followedClusterRedirects;
 };
-
-
-/**
- * @brief The ResponseEmitter class
- * Class used to send responses to callers.
- * THIS IS IMPLEMENTATION CLASS AND SHOULDN'T BE USED DIRECTLY.
- */
-class ResponseEmitter : public QObject {
-    Q_OBJECT
-public:
-    ResponseEmitter(QObject* owner, Command::Callback callback)
-        : owner(owner)
-    {
-        QObject::connect(this, &ResponseEmitter::response,
-                         owner, callback, Qt::AutoConnection);
-    }
-
-    void sendResponse(const Response& r, const QString& err)
-    {        
-        emit response(r, err);
-    }
-    QObject* owner;
-signals:
-    void response(Response, QString);
-};
-}
+}  // namespace RedisClient

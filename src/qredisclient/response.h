@@ -1,5 +1,4 @@
 #pragma once
-#include <hiredis/read.h>
 #include <QByteArray>
 #include <QSharedPointer>
 #include <QString>
@@ -8,32 +7,43 @@
 
 #include "exception.h"
 
+struct redisReader;
+struct redisReadTask;
+struct redisReplyObjectFunctions;
+
 namespace RedisClient {
 class Response {
   ADD_EXCEPTION
 
  public:
-  enum Type { Status, Error, Integer, Bulk, MultiBulk, Unknown };
+  enum Type { String = 1, Array, Integer, Nil, Status, Error, Unknown };
 
  public:
   Response();
-  Response(const QByteArray &);
+  Response(Response::Type, const QVariant &);
+
   virtual ~Response(void);
 
-  QVariant getValue();
-  Type getType() const;
-  QByteArray source() const;
-  QString toRawString(long limit = 1500) const;
+  QVariant value() const;
+  Type type() const;
 
   bool isEmpty() const;
   bool isErrorMessage() const;
   bool isErrorStateMessage() const;
+  bool isProtocolErrorMessage() const;
   bool isDisabledCommandErrorMessage() const;
+  bool isPermissionError() const;
+  bool isWrongPasswordError() const;
   bool isOkMessage() const;
+  bool isQueuedMessage() const;
   bool isValid();
   bool isMessage() const;
   bool isArray() const;
-  bool hasUnusedBuffer() const;
+
+  // Scan response
+  bool isValidScanResponse() const;
+  long long getCursor();
+  QVariantList getCollection();
 
   // Pub/Sub support
   QByteArray getChannel() const;
@@ -44,44 +54,10 @@ class Response {
   QByteArray getRedirectionHost() const;
   uint getRedirectionPort() const;
 
- public:
-  void setSource(const QByteArray &);
-  void appendToSource(const QByteArray &);
-  QByteArray getUnusedBuffer();
-  void reset();
-
   static QString valueToHumanReadString(const QVariant &, int indentLevel = 0);
 
  protected:
-  Type getResponseType(const QByteArray &) const;
-  Type getResponseType(const char) const;
-
-  bool parse();
-  void feed(const QByteArray &buffer);
-
- protected:
-  QByteArray m_responseSource;
-  QSharedPointer<redisReader> m_redisReader;
-  QSharedPointer<QVariant> m_result;
-
- private:
-  /*
-   * hiredis custom functions
-   */
-  static void *createStringObject(const redisReadTask *task, char *str,
-                                  size_t len);
-  static void *createArrayObject(const redisReadTask *t, int elements);
-  static void *createIntegerObject(const redisReadTask *task, long long value);
-  static void *createNilObject(const redisReadTask *task);
-  static void freeObject(void *obj);
-
-  static const redisReplyObjectFunctions defaultFunctions;
-
-  static redisReader *redisReaderCreate(void) {
-    return redisReaderCreateWithFunctions(
-        const_cast<redisReplyObjectFunctions *>(&defaultFunctions));
-  }
+  Type m_type;
+  QVariant m_result;
 };
 }  // namespace RedisClient
-
-Q_DECLARE_METATYPE(QVector<QVariant *>)

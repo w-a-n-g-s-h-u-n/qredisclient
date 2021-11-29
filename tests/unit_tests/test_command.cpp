@@ -104,3 +104,50 @@ void TestCommand::scanCommandIsValid_data()
     QTest::newRow("Invalid value scan") << QList<QByteArray>{"set", "test", "0"} << false;
 }
 
+void TestCommand::pipelineCommand()
+{
+    RedisClient::Command cmd;
+    cmd.addToPipeline({"PING"});
+    cmd.addToPipeline({"SET", "foo"});
+    cmd.append("bar");  // Append part to previous command
+
+    QCOMPARE(cmd.isEmpty(), false);
+    QCOMPARE(cmd.isValid(), true);
+    QCOMPARE(cmd.isAuthCommand(), false);
+    QCOMPARE(cmd.isSelectCommand(), false);
+    QCOMPARE(cmd.isSubscriptionCommand(), false);
+    QCOMPARE(cmd.isUnSubscriptionCommand(), false);
+
+    QByteArray actualResult = cmd.getByteRepresentation();
+    QCOMPARE(actualResult, QByteArray("*1\r\n$5\r\nMULTI\r\n*1\r\n$4\r\nPING\r\n*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*1\r\n$4\r\nEXEC\r\n"));
+}
+
+void TestCommand::calcKeyHashSlot()
+{
+    //given
+    QFETCH(QList<QByteArray>, rawCommandString);
+    QFETCH(quint16, expected);
+    RedisClient::Command cmd(rawCommandString);
+
+    quint16 actualResult = cmd.getHashSlot();
+
+    QCOMPARE(actualResult, expected);
+}
+
+void TestCommand::calcKeyHashSlot_data()
+{
+    QTest::addColumn<QList<QByteArray>>("rawCommandString");
+    QTest::addColumn<quint16>("expected");
+
+    QTest::newRow("End == end of key")
+            << QList<QByteArray>{"type", "site:{752ef10e-81a9-4d7a-9d39-ef58ee6174db}"}
+            << (quint16)12605;
+
+    QTest::newRow("End in the middle of the key")
+            << QList<QByteArray>{"type", "site:{752ef10e-81a9-4d7a-9d39-ef58ee6174db}:more_data"}
+            << (quint16)12605;
+
+    QTest::newRow("Start == start of the key")
+            << QList<QByteArray>{"type", "{752ef10e-81a9-4d7a-9d39-ef58ee6174db}:more_data"}
+            << (quint16)12605;
+}

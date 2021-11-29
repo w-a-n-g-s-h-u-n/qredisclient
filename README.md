@@ -23,21 +23,27 @@ int main(int argc, char *argv[])
   RedisClient::Connection connection(config);
   
   // Run command and wait for result
-  connection.commandSync("PING"); 
+  connection.commandSync({"PING"}); 
   
   // Run command in async mode
-  connection.command("PING");
+  connection.command({"PING"});
   
   // Run command in db #2
-  connection.command("PING", 2); 
+  connection.command({"PING"}, 2); 
   
   // Run async command with callback
-  connection.command("PING", [](RedisClient::Response r) { 
+  connection.command({"PING"}, [](RedisClient::Response r) { 
     QVariant val = r.getValue(); // get value from response
     // do stuff
   });
 
-  // See more usage examples in examples folder
+  // Use addToPipeline() to enable MULTI+EXEC transactions
+  RedisClient::Command cmd;
+  cmd.addToPipeline({"SET", "foo", "bar"});
+  cmd.addToPipeline({"HSET" "foz", "key", "value"});
+  RedisClient::Response response = connection.commandSync(cmd);
+
+  // See more usage examples in the tests/unit_tests folder
 }
 
 ```
