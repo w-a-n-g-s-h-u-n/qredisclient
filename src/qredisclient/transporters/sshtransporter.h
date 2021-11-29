@@ -17,9 +17,9 @@ class SshTransporter : public AbstractTransporter
 {
 public:
     SshTransporter(Connection *);
-
+    ~SshTransporter() override;
 public slots:
-    void disconnectFromHost();
+    void disconnectFromHost() override;
 
 protected:
     bool isInitialized() const override;
@@ -40,7 +40,7 @@ private slots:
     void OnSshConnectionError(QSshClient::Error);
     void OnSshSocketDestroyed();
 
-private:
+protected:
     QSshTcpSocket * m_socket; // owner of this object is sshClient
     QSharedPointer<QSshClient> m_sshClient;
 
