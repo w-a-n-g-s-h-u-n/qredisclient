@@ -14,7 +14,6 @@ RedisClient::SshTransporter::SshTransporter(RedisClient::Connection *c)
       m_socket(nullptr),
       m_isHostKeyAlreadyAdded(false)
 {
-    disconnectFromHost();
 }
 
 void RedisClient::SshTransporter::initSocket()
