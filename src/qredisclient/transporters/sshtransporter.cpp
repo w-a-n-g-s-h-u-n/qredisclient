@@ -65,7 +65,7 @@ bool RedisClient::SshTransporter::connectToHost()
     if (config.isSshPasswordUsed())
         m_sshClient->setPassphrase(config.sshPassword());
 
-    if (config.getSshPrivateKey().size() > 0) {
+    if (!config.getSshPrivateKeyPath().isEmpty()) {
         QString privateKey = config.getSshPrivateKeyPath();
         QString publicKey = config.getSshPublicKeyPath();
         m_sshClient->setKeyFiles(publicKey, privateKey);
