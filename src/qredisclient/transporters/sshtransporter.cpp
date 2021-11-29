@@ -14,6 +14,7 @@ RedisClient::SshTransporter::SshTransporter(RedisClient::Connection *c)
       m_socket(nullptr),
       m_isHostKeyAlreadyAdded(false)
 {
+    disconnectFromHost();
 }
 
 void RedisClient::SshTransporter::initSocket()
@@ -26,8 +27,6 @@ void RedisClient::SshTransporter::disconnectFromHost()
 {    
     if (m_sshClient.isNull())
         return;
-
-    m_loopTimer->stop();
 
     if (m_socket)
         QObject::disconnect(m_socket, 0, this, 0);
@@ -100,7 +99,6 @@ void RedisClient::SshTransporter::sendCommand(const QByteArray &cmd)
 
     while (total < cmd.size()) {
         sent = m_socket->write(data + total, cmd.size() - total);
-        qDebug() << "Bytes written to socket" << sent;
         total += sent;
     }
 }
@@ -162,9 +160,7 @@ void RedisClient::SshTransporter::OnSshSocketDestroyed()
 }
 
 void RedisClient::SshTransporter::reconnect()
-{    
-    if (m_loopTimer->isActive())
-        m_loopTimer->stop();
+{   
 
     if (m_socket) {
         QObject::disconnect(m_socket, 0, this, 0);
@@ -174,6 +170,5 @@ void RedisClient::SshTransporter::reconnect()
 
     if (openTcpSocket()) {
         resetDbIndex();
-        m_loopTimer->start();
     }
 }
