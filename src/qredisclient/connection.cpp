@@ -524,7 +524,6 @@ void RedisClient::Connection::createTransporter() {
   if (m_config.useSshTunnel()) {
     m_transporter =
         QSharedPointer<AbstractTransporter>(new SshTransporter(this));
-    throw Exception("QRedisClient compiled without ssh support.");
   } else {
     m_transporter =
         QSharedPointer<AbstractTransporter>(new DefaultTransporter(this));
