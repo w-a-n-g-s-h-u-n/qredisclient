@@ -15,7 +15,9 @@ RedisClient::SshTransporter::SshTransporter(RedisClient::Connection *c)
       m_isHostKeyAlreadyAdded(false)
 {
 }
-
+RedisClient::SshTransporter::~SshTransporter() {
+    disconnectFromHost();
+}
 void RedisClient::SshTransporter::initSocket()
 {
     m_sshClient = QSharedPointer<QSshClient>(new QSshClient);
